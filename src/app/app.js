@@ -9,22 +9,15 @@ import {
 } from "./state.js";
 
 export function createApp(options = {}) {
-  const WorkerClass = options.WorkerClass ?? Worker;
-
-  const workerUrl =
-    options.workerUrl ??
-    new URL("../worker/processor.worker.js", import.meta.url);
-
   let state = createInitialState();
   let requestId = 0;
   let activeRequestId = null;
 
   const listeners = new Set();
 
-  const worker = new WorkerClass(workerUrl, { type: "module" });
+  const worker = createWorker(options);
 
   worker.addEventListener("message", handleWorkerMessage);
-
   worker.addEventListener("error", handleWorkerError);
 
   return {
@@ -85,7 +78,6 @@ export function createApp(options = {}) {
     state = updateProcessingOptions(state, options);
 
     const processingOptions = state.processing.options;
-
     const id = `request-${++requestId}`;
 
     activeRequestId = id;
@@ -116,7 +108,6 @@ export function createApp(options = {}) {
       const image = deserializeImage(message.image);
 
       state = setProcessedImage(state, image);
-
       activeRequestId = null;
 
       notify();
@@ -156,7 +147,6 @@ export function createApp(options = {}) {
 
   function dispose() {
     worker.removeEventListener("message", handleWorkerMessage);
-
     worker.removeEventListener("error", handleWorkerError);
 
     worker.terminate();
@@ -165,6 +155,18 @@ export function createApp(options = {}) {
 
     listeners.clear();
   }
+}
+
+function createWorker(options) {
+  if (options.WorkerClass) {
+    const workerUrl = options.workerUrl;
+
+    return new options.WorkerClass(workerUrl, { type: "module" });
+  }
+
+  return new Worker(new URL("../worker/processor.worker.js", import.meta.url), {
+    type: "module",
+  });
 }
 
 function serializeImage(image) {
