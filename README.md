@@ -58,13 +58,23 @@ position, while the bottom-right blue subpixel is available for specific
 combinations involving green. Both blue subpixels can be active simultaneously
 when red and green are also active.
 
-Before dithering, each source pixel is composited over a solid black background
-using its alpha value. This removes transparency while accounting for its effect
-on the resulting RGB color. Fully transparent pixels therefore become black,
-while partially transparent pixels are blended with black.
+Before color matching, each non-transparent source pixel is composited over a
+solid black background using its alpha value. This accounts for the effect of
+partial transparency on the resulting RGB color without introducing
+semi-transparent output pixels.
+
+Fully transparent source pixels remain transparent in the output.
+Non-transparent source pixels are converted into 2×2 blocks whose subpixels are
+all fully opaque, including black subpixels. This preserves the distinction
+between the transparent background and the solid black areas of the figure.
 
 Each source pixel becomes a 2×2 block, so the output image has twice the
-original width and height. All output subpixels are fully opaque.
+original width and height.
+
+The resulting image can be exported as a PNG with transparency preserved, making
+it suitable for use as a sprite in applications such as Godot. Transparent areas
+reveal the scene behind the sprite, while black pixels belonging to the figure
+remain fully opaque.
 
 The algorithm is designed to produce a distinctive, restricted-color retro
 aesthetic rather than reproduce every source color exactly.

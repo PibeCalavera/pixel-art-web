@@ -30,11 +30,14 @@ const RED = [255, 0, 0];
 const GREEN = [0, 255, 0];
 const BLUE = [0, 0, 255];
 
-/** RGB values of the background used to remove source transparency. */
+/** RGB values of the background used for color matching. */
 const BACKGROUND = [0, 0, 0];
 
-/** Alpha value for every output pixel. */
+/** Alpha value for every opaque output pixel. */
 const OPAQUE_ALPHA = 255;
+
+/** Alpha value for every transparent output pixel. */
+const TRANSPARENT_ALPHA = 0;
 
 /**
  * Maps each subpixel position to its corresponding RGB color.
@@ -45,15 +48,18 @@ const SUBPIXEL_COLORS = [RED, GREEN, BLUE, BLUE];
 /**
  * Converts an image into a 2x-resolution RGBK subpixel representation.
  *
- * Each source pixel is first composited over a solid white background using
- * its alpha value. The resulting opaque RGB color is then matched to the
- * closest valid subpixel configuration in linear-light RGB space.
+ * Fully transparent source pixels remain transparent in the output.
+ * Every non-transparent source pixel is composited over a solid black
+ * background for color matching, then matched to the closest valid
+ * subpixel configuration in linear-light RGB space.
  *
- * Each source pixel becomes a 2x2 output block containing red, green, blue,
- * or black subpixels. Every output pixel is fully opaque.
+ * Each visible source pixel becomes a 2x2 output block containing red,
+ * green, blue, or black subpixels. Every output pixel belonging to the
+ * figure is fully opaque, including black subpixels.
  *
  * @param {ImageDataBuffer} image - Source image containing RGBA pixel data.
- * @returns {ImageDataBuffer} A fully opaque image with twice the source width and height.
+ * @returns {ImageDataBuffer} An image with twice the source width and height,
+ * preserving fully transparent pixels and using opaque pixels for the figure.
  * @throws {TypeError} If the input does not contain valid dimensions and RGBA data.
  */
 export function ditherRetroRGBK(image) {
@@ -81,28 +87,33 @@ export function ditherRetroRGBK(image) {
       const r = data[sourceIndex];
       const g = data[sourceIndex + 1];
       const b = data[sourceIndex + 2];
-      const alpha = data[sourceIndex + 3] / 255;
+      const alphaByte = data[sourceIndex + 3];
 
-      // Composite the source pixel over the opaque background.
+      const outputX = x * 2;
+      const outputY = y * 2;
+
+      // Preserve fully transparent source pixels as transparent background.
+      if (alphaByte === TRANSPARENT_ALPHA) {
+        writeTransparentPixel(output, outputX, outputY);
+        writeTransparentPixel(output, outputX + 1, outputY);
+        writeTransparentPixel(output, outputX, outputY + 1);
+        writeTransparentPixel(output, outputX + 1, outputY + 1);
+        continue;
+      }
+
+      // Composite visible source colors over black for color matching.
+      const alpha = alphaByte / 255;
       const opaqueR = compositeChannel(r, BACKGROUND[0], alpha);
       const opaqueG = compositeChannel(g, BACKGROUND[1], alpha);
       const opaqueB = compositeChannel(b, BACKGROUND[2], alpha);
 
       const combination = findClosestCombination(opaqueR, opaqueG, opaqueB);
 
-      const outputX = x * 2;
-      const outputY = y * 2;
-
-      // Top-left subpixel: red when enabled; otherwise black.
+      // Every subpixel belonging to the figure is fully opaque,
+      // including black subpixels.
       writePixel(output, outputX, outputY, combination[0] ? RED : BLACK);
-
-      // Top-right subpixel: green when enabled; otherwise black.
       writePixel(output, outputX + 1, outputY, combination[1] ? GREEN : BLACK);
-
-      // Bottom-left subpixel: blue when enabled; otherwise black.
       writePixel(output, outputX, outputY + 1, combination[2] ? BLUE : BLACK);
-
-      // Bottom-right subpixel: blue when enabled; otherwise black.
       writePixel(
         output,
         outputX + 1,
@@ -134,7 +145,7 @@ function compositeChannel(source, background, alpha) {
  * Converting sRGB channel values to linear light before comparison makes
  * the distance calculation better reflect differences in emitted light.
  * If multiple configurations have the same distance, the first one in
- * `COMBINATIONS` is retained.
+ * COMBINATIONS is retained.
  *
  * @param {number} r - Source red channel value in the range 0–255.
  * @param {number} g - Source green channel value in the range 0–255.
@@ -176,7 +187,7 @@ function findClosestCombination(r, g, b) {
  * corresponding to its share of the four positions in the output block.
  * Disabled subpixels contribute zero because they render as black.
  *
- * @param {number[]} combination - Four binary flags in the order defined by `COMBINATIONS`.
+ * @param {number[]} combination - Four binary flags in the order defined by COMBINATIONS.
  * @returns {number[]} Average linear-light RGB values, normalized to the range 0–1.
  */
 function getAverageColor(combination) {
@@ -215,7 +226,7 @@ function srgbToLinear(value) {
 }
 
 /**
- * Writes a fully opaque RGB pixel to the output image buffer.
+ * Writes a fully opaque RGB pixel to the output image.
  *
  * Coordinates are expressed in output-image pixels. The caller is responsible
  * for supplying valid coordinates and channel values.
@@ -232,4 +243,20 @@ function writePixel(output, x, y, color) {
   output.data[index + 1] = color[1];
   output.data[index + 2] = color[2];
   output.data[index + 3] = OPAQUE_ALPHA;
+}
+
+/**
+ * Writes a fully transparent pixel to the output image.
+ *
+ * @param {ImageDataBuffer} output - Destination image buffer.
+ * @param {number} x - Horizontal output coordinate.
+ * @param {number} y - Vertical output coordinate.
+ */
+function writeTransparentPixel(output, x, y) {
+  const index = (y * output.width + x) * 4;
+
+  output.data[index] = 0;
+  output.data[index + 1] = 0;
+  output.data[index + 2] = 0;
+  output.data[index + 3] = TRANSPARENT_ALPHA;
 }
