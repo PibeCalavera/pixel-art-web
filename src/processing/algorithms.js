@@ -12,6 +12,7 @@ import {
   ditherFloydSteinberg,
   ditherAtkinson,
   ditherPair,
+  ditherRetroRGBK,
 } from "./dithering/index.js";
 
 const RESIZE_ALGORITHMS = {
@@ -28,6 +29,7 @@ const DITHERING_ALGORITHMS = {
   "floyd-steinberg": ditherFloydSteinberg,
   atkinson: ditherAtkinson,
   "pair-dither": ditherPair,
+  rgbk: ditherRetroRGBK,
 };
 
 export function getResizeAlgorithm(name) {
