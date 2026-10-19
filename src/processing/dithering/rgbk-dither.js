@@ -30,6 +30,12 @@ const RED = [255, 0, 0];
 const GREEN = [0, 255, 0];
 const BLUE = [0, 0, 255];
 
+/** RGB values of the background used to remove source transparency. */
+const BACKGROUND = [0, 0, 0];
+
+/** Alpha value for every output pixel. */
+const OPAQUE_ALPHA = 255;
+
 /**
  * Maps each subpixel position to its corresponding RGB color.
  * The order must match the flag order used by `COMBINATIONS`.
@@ -39,15 +45,15 @@ const SUBPIXEL_COLORS = [RED, GREEN, BLUE, BLUE];
 /**
  * Converts an image into a 2x-resolution RGBK subpixel representation.
  *
- * Each source pixel is mapped to a 2x2 output block. The algorithm selects
- * the valid subpixel configuration whose average linear-light RGB color is
- * closest to the source pixel's color. The selected configuration determines
- * which positions render red, green, blue, or black.
+ * Each source pixel is first composited over a solid white background using
+ * its alpha value. The resulting opaque RGB color is then matched to the
+ * closest valid subpixel configuration in linear-light RGB space.
  *
- * Source alpha values are preserved for all four output subpixels.
+ * Each source pixel becomes a 2x2 output block containing red, green, blue,
+ * or black subpixels. Every output pixel is fully opaque.
  *
  * @param {ImageDataBuffer} image - Source image containing RGBA pixel data.
- * @returns {ImageDataBuffer} A new image with twice the source width and height.
+ * @returns {ImageDataBuffer} A fully opaque image with twice the source width and height.
  * @throws {TypeError} If the input does not contain valid dimensions and RGBA data.
  */
 export function ditherRetroRGBK(image) {
@@ -55,6 +61,8 @@ export function ditherRetroRGBK(image) {
     !image ||
     !Number.isInteger(image.width) ||
     !Number.isInteger(image.height) ||
+    image.width <= 0 ||
+    image.height <= 0 ||
     !image.data ||
     image.data.length < image.width * image.height * 4
   ) {
@@ -73,43 +81,50 @@ export function ditherRetroRGBK(image) {
       const r = data[sourceIndex];
       const g = data[sourceIndex + 1];
       const b = data[sourceIndex + 2];
-      const alpha = data[sourceIndex + 3];
+      const alpha = data[sourceIndex + 3] / 255;
 
-      const combination = findClosestCombination(r, g, b);
+      // Composite the source pixel over the opaque background.
+      const opaqueR = compositeChannel(r, BACKGROUND[0], alpha);
+      const opaqueG = compositeChannel(g, BACKGROUND[1], alpha);
+      const opaqueB = compositeChannel(b, BACKGROUND[2], alpha);
+
+      const combination = findClosestCombination(opaqueR, opaqueG, opaqueB);
+
+      const outputX = x * 2;
+      const outputY = y * 2;
 
       // Top-left subpixel: red when enabled; otherwise black.
-      writePixel(output, x * 2, y * 2, combination[0] ? RED : BLACK, alpha);
+      writePixel(output, outputX, outputY, combination[0] ? RED : BLACK);
 
       // Top-right subpixel: green when enabled; otherwise black.
-      writePixel(
-        output,
-        x * 2 + 1,
-        y * 2,
-        combination[1] ? GREEN : BLACK,
-        alpha,
-      );
+      writePixel(output, outputX + 1, outputY, combination[1] ? GREEN : BLACK);
 
       // Bottom-left subpixel: blue when enabled; otherwise black.
-      writePixel(
-        output,
-        x * 2,
-        y * 2 + 1,
-        combination[2] ? BLUE : BLACK,
-        alpha,
-      );
+      writePixel(output, outputX, outputY + 1, combination[2] ? BLUE : BLACK);
 
       // Bottom-right subpixel: blue when enabled; otherwise black.
       writePixel(
         output,
-        x * 2 + 1,
-        y * 2 + 1,
+        outputX + 1,
+        outputY + 1,
         combination[3] ? BLUE : BLACK,
-        alpha,
       );
     }
   }
 
   return output;
+}
+
+/**
+ * Composites a source channel over a background channel.
+ *
+ * @param {number} source - Source channel value in the range 0–255.
+ * @param {number} background - Background channel value in the range 0–255.
+ * @param {number} alpha - Normalized source alpha in the range 0–1.
+ * @returns {number} The composited channel value, rounded to an integer.
+ */
+function compositeChannel(source, background, alpha) {
+  return Math.round(source * alpha + background * (1 - alpha));
 }
 
 /**
@@ -200,7 +215,7 @@ function srgbToLinear(value) {
 }
 
 /**
- * Writes an RGBA pixel to the output image buffer.
+ * Writes a fully opaque RGB pixel to the output image buffer.
  *
  * Coordinates are expressed in output-image pixels. The caller is responsible
  * for supplying valid coordinates and channel values.
@@ -209,13 +224,12 @@ function srgbToLinear(value) {
  * @param {number} x - Horizontal output coordinate.
  * @param {number} y - Vertical output coordinate.
  * @param {number[]} color - RGB channel values for the pixel.
- * @param {number} alpha - Alpha channel value to preserve.
  */
-function writePixel(output, x, y, color, alpha) {
+function writePixel(output, x, y, color) {
   const index = (y * output.width + x) * 4;
 
   output.data[index] = color[0];
   output.data[index + 1] = color[1];
   output.data[index + 2] = color[2];
-  output.data[index + 3] = alpha;
+  output.data[index + 3] = OPAQUE_ALPHA;
 }

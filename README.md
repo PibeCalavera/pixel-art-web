@@ -44,7 +44,7 @@ B/K  B/K
 
 Each subpixel is either its assigned color or black. The algorithm selects from
 a predefined set of valid configurations the one whose average color most
-closely approximates the original pixel.
+closely approximates the source pixel.
 
 To compare colors, it converts sRGB channel values to linear-light RGB and
 calculates the squared Euclidean distance between the source color and each
@@ -58,9 +58,13 @@ position, while the bottom-right blue subpixel is available for specific
 combinations involving green. Both blue subpixels can be active simultaneously
 when red and green are also active.
 
-Because each source pixel becomes a 2×2 block, the output image has twice the
-original width and height. The source pixel's alpha value is preserved across
-all four output subpixels.
+Before dithering, each source pixel is composited over a solid black background
+using its alpha value. This removes transparency while accounting for its effect
+on the resulting RGB color. Fully transparent pixels therefore become black,
+while partially transparent pixels are blended with black.
+
+Each source pixel becomes a 2×2 block, so the output image has twice the
+original width and height. All output subpixels are fully opaque.
 
 The algorithm is designed to produce a distinctive, restricted-color retro
 aesthetic rather than reproduce every source color exactly.
